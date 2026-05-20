@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="極速光流（Neon Reflex）- 一款刺激的雙人單鍵時機防禦遊戲。精準掌控擊球時機，擊出致命快球！">
+    <title>極速光流 (Neon Reflex) - 雙人對戰時機擊球網頁遊戲</title>
+    
+    <!-- Google Fonts: Outfit & Orbitron for modern sci-fi look -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- CSS stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="stars-bg"></div>
+    <div class="scanlines"></div>
+    
+    <main id="app-container">
+        <!-- Game HUD Layer (Over the Canvas) -->
+        <header id="game-header">
+            <h1 class="logo">NEON <span class="accent-text">REFLEX</span></h1>
+            <div class="game-stats">
+                <!-- Left Player Stats -->
+                <div class="player-stat-card player-left" id="p1-card">
+                    <span class="player-label">PLAYER 1</span>
+                    <span class="player-key-hint">A / LEFT ARROW</span>
+                    <div class="score-display" id="p1-score">0</div>
+                    <div class="streak-badge" id="p1-streak-container">
+                        COMBO <span id="p1-streak">0</span>
+                    </div>
+                </div>
+
+                <!-- Match Info -->
+                <div class="match-info">
+                    <div class="versus-text">VS</div>
+                    <div class="target-score-label">FIRST TO 5</div>
+                </div>
+
+                <!-- Right Player Stats -->
+                <div class="player-stat-card player-right" id="p2-card">
+                    <span class="player-label">PLAYER 2</span>
+                    <span class="player-key-hint">RIGHT ARROW</span>
+                    <div class="score-display" id="p2-score">0</div>
+                    <div class="streak-badge" id="p2-streak-container">
+                        COMBO <span id="p2-streak">0</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Game Arena -->
+        <section id="game-arena">
+            <canvas id="game-canvas" width="1024" height="576"></canvas>
+
+            <!-- Screen Flash Overlay for Hits / Score -->
+            <div id="screen-flash" class="flash-overlay"></div>
+
+            <!-- Glassmorphic UI Overlays -->
+            <!-- 1. Start Menu -->
+            <div id="start-menu" class="overlay-panel active">
+                <div class="panel-content">
+                    <h2 class="glowing-title">極速光流</h2>
+                    <p class="subtitle">NEON REFLEX</p>
+                    
+                    <div class="rules-box">
+                        <h3>如何遊玩 / RULES</h3>
+                        <ul>
+                            <li>這是一場考驗<strong>反應與心理素質</strong>的決鬥！</li>
+                            <li>在進入防禦判定區時，按下鍵盤按鍵或<strong>點擊螢幕對應側</strong>進行回擊：</li>
+                            <li class="control-desc">
+                                <span class="key-badge">PLAYER 1</span> : 按 <kbd class="key-cap">A</kbd> 或 <kbd class="key-cap">←</kbd> / 點擊<strong>螢幕左側</strong>
+                            </li>
+                            <li class="control-desc">
+                                <span class="key-badge magenta">PLAYER 2</span> : 按 <kbd class="key-cap">→</kbd> / 點擊<strong>螢幕右側</strong>
+                            </li>
+                            <li><span class="gold-glow-text">越晚按下回擊</span>，球回彈的速度就會<strong>越快</strong>！</li>
+                            <li>若球越過防線碰觸到你後方的<span class="error-glow-text">己方能量牆</span>，你就輸了！</li>
+                        </ul>
+                    </div>
+
+                    <div class="menu-actions">
+                        <button id="btn-start-game" class="btn btn-primary">開始對決 START GAME</button>
+                        <button id="btn-toggle-sound" class="btn btn-secondary">靜音音效 SOUND: ON</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Pause Menu -->
+            <div id="pause-menu" class="overlay-panel">
+                <div class="panel-content">
+                    <h2 class="panel-title">暫停中 PAUSED</h2>
+                    <p>對決暫時中止...</p>
+                    <div class="menu-actions">
+                        <button id="btn-resume" class="btn btn-primary">繼續對決 RESUME</button>
+                        <button id="btn-quit" class="btn btn-secondary">返回主選單 QUIT TO MENU</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Game Over Screen -->
+            <div id="game-over-screen" class="overlay-panel">
+                <div class="panel-content">
+                    <h2 class="victory-title" id="winner-announcement">PLAYER 1 獲勝！</h2>
+                    <p class="subtitle">VICTORY</p>
+                    
+                    <div class="stats-summary">
+                        <div class="stat-row">
+                            <span>最終比數 Final Score</span>
+                            <span id="final-score-val">5 - 3</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>最高連擊 Max Streak</span>
+                            <span id="max-streak-val">7 Hits</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>最快球速 Max Speed</span>
+                            <span id="max-speed-val">45 km/h</span>
+                        </div>
+                    </div>
+
+                    <div class="menu-actions">
+                        <button id="btn-restart" class="btn btn-primary">再戰一局 REMATCH</button>
+                        <button id="btn-menu" class="btn btn-secondary">返回主選單 MAIN MENU</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick HUD Indicators (Feedback Rating) -->
+            <div id="hit-feedback-left" class="feedback-text">PERFECT!</div>
+            <div id="hit-feedback-right" class="feedback-text">PERFECT!</div>
+        </section>
+
+        <!-- Footer -->
+        <footer id="game-footer">
+            <p>&copy; 2026 NEON REFLEX. Designed with premium cyberpunk aesthetics. Press <kbd class="key-cap">ESC</kbd> to Pause.</p>
+        </footer>
+    </main>
+
+    <!-- Game Engine Script -->
+    <script src="app.js"></script>
+</body>
+</html>
