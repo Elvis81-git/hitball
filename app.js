@@ -176,6 +176,10 @@ class Game {
         this.lastTime = 0;
         this.ballWasReset = false;
 
+        // Dynamic core play zone coordinates (16:9 gameplay center, 21:9 background extensions)
+        this.xStart = 0;
+        this.xEnd = 1024;
+
         // UI Element References
         this.menus = {
             start: document.getElementById('start-menu'),
@@ -233,8 +237,28 @@ class Game {
     }
 
     resizeCanvas() {
-        // We render at 1024x576 internal coordinate space. CSS handles scaling.
-        // No extra JS scale is needed since CSS maintains aspect ratio.
+        const rect = this.canvas.getBoundingClientRect();
+        
+        // Calculate aspect ratio dynamically based on the display size
+        const aspect = rect.width / rect.height;
+        
+        // Lock internal vertical coordinate space to 576. Horizontal scales based on aspect ratio.
+        this.canvas.height = 576;
+        this.canvas.width = Math.round(576 * aspect);
+        
+        this.width = this.canvas.width;
+        this.height = this.canvas.height;
+        
+        // Target 16:9 center play area
+        const coreWidth = 1024;
+        
+        if (this.width > coreWidth) {
+            this.xStart = (this.width - coreWidth) / 2;
+            this.xEnd = this.xStart + coreWidth;
+        } else {
+            this.xStart = 0;
+            this.xEnd = this.width;
+        }
     }
 
     startGame() {
@@ -370,8 +394,8 @@ class Game {
         if (player === 'p1' && this.ball.vx > 0) return;
         if (player === 'p2' && this.ball.vx < 0) return;
 
-        // Calculate distance from player's wall (left wall: x=0, right wall: x=width)
-        const dist = player === 'p1' ? this.ball.x : this.width - this.ball.x;
+        // Calculate distance from player's wall (left wall: x=xStart, right wall: x=xEnd)
+        const dist = player === 'p1' ? this.ball.x - this.xStart : this.xEnd - this.ball.x;
 
         // Check if ball is inside the maximum hit zone (good boundary)
         if (dist <= this.zones.good && dist >= 0) {
@@ -436,7 +460,7 @@ class Game {
             this.spamCooldown[player] = timestamp + this.cooldownDuration;
             
             // Generate visual "fail warning" (small warning particle burst at player's wall)
-            const wallX = player === 'p1' ? 10 : this.width - 10;
+            const wallX = player === 'p1' ? this.xStart + 10 : this.xEnd - 10;
             this.createSpamWarningParticles(wallX, this.ball.y, player);
             
             // Low feedback buzz sound
@@ -469,6 +493,16 @@ class Game {
         // Remove and force reflow to restart CSS animation
         void el.offsetWidth; 
         el.classList.add('feedback-trigger');
+
+        // Position feedback dynamically relative to xStart/xEnd so it doesn't float offscreen
+        const relativePosPct = ((this.xStart + 120) / this.width * 100);
+        if (player === 'p1') {
+            el.style.left = `${relativePosPct}%`;
+            el.style.right = 'auto';
+        } else {
+            el.style.right = `${relativePosPct}%`;
+            el.style.left = 'auto';
+        }
 
         // Style based on rating
         if (rating === 'PERFECT') {
@@ -563,9 +597,9 @@ class Game {
             this.shakeStrength = Math.max(this.shakeStrength, 2);
         }
 
-        // Goal/Wall collisions (Left / Right boundaries)
-        // If ball collides with Player 1's wall (x = 0)
-        if (this.ball.x - this.ball.radius <= 0) {
+        // Goal/Wall collisions (Left / Right boundaries relative to core gameplay bounds)
+        // If ball collides with Player 1's wall (x = xStart)
+        if (this.ball.x - this.ball.radius <= this.xStart) {
             this.scores.p2++;
             this.streaks.p1 = 0;
             this.streaks.p2 = 0;
@@ -579,8 +613,8 @@ class Game {
                 this.resetBall(1); // Serve towards P1
             }
         } 
-        // If ball collides with Player 2's wall (x = width)
-        else if (this.ball.x + this.ball.radius >= this.width) {
+        // If ball collides with Player 2's wall (x = xEnd)
+        else if (this.ball.x + this.ball.radius >= this.xEnd) {
             this.scores.p1++;
             this.streaks.p1 = 0;
             this.streaks.p2 = 0;
@@ -694,60 +728,72 @@ class Game {
 
     drawHitZones() {
         // Player 1 (Left Side) Hit Zone
-        const gradL = this.ctx.createLinearGradient(0, 0, this.hitZoneWidth, 0);
+        const gradL = this.ctx.createLinearGradient(this.xStart, 0, this.xStart + this.hitZoneWidth, 0);
         gradL.addColorStop(0, 'rgba(0, 240, 255, 0.22)');
         gradL.addColorStop(0.2, 'rgba(0, 240, 255, 0.1)');
         gradL.addColorStop(0.5, 'rgba(0, 240, 255, 0.05)');
         gradL.addColorStop(1, 'rgba(0, 240, 255, 0)');
         this.ctx.fillStyle = gradL;
-        this.ctx.fillRect(0, 0, this.hitZoneWidth, this.height);
+        this.ctx.fillRect(this.xStart, 0, this.hitZoneWidth, this.height);
+
+        // Fill dynamic margin/gutter background on the far left side
+        if (this.xStart > 0) {
+            this.ctx.fillStyle = 'rgba(0, 240, 255, 0.04)';
+            this.ctx.fillRect(0, 0, this.xStart, this.height);
+        }
 
         // Player 1 Outer Boundaries (Perfect, Great boundaries)
         this.ctx.strokeStyle = 'rgba(0, 240, 255, 0.15)';
         this.ctx.setLineDash([6, 6]);
         this.ctx.beginPath();
-        this.ctx.moveTo(this.zones.good, 0);
-        this.ctx.lineTo(this.zones.good, this.height);
+        this.ctx.moveTo(this.xStart + this.zones.good, 0);
+        this.ctx.lineTo(this.xStart + this.zones.good, this.height);
         this.ctx.stroke();
         this.ctx.setLineDash([]);
 
-        // Player 1 Goal energy barrier (Wall at x=5)
+        // Player 1 Goal energy barrier (Wall at x = xStart)
         this.ctx.strokeStyle = 'rgba(0, 240, 255, 0.8)';
         this.ctx.shadowColor = 'rgba(0, 240, 255, 0.8)';
         this.ctx.shadowBlur = 10;
         this.ctx.lineWidth = 4;
         this.ctx.beginPath();
-        this.ctx.moveTo(4, 0);
-        this.ctx.lineTo(4, this.height);
+        this.ctx.moveTo(this.xStart, 0);
+        this.ctx.lineTo(this.xStart, this.height);
         this.ctx.stroke();
         this.ctx.shadowBlur = 0; // reset glow
 
         // Player 2 (Right Side) Hit Zone
-        const gradR = this.ctx.createLinearGradient(this.width, 0, this.width - this.hitZoneWidth, 0);
+        const gradR = this.ctx.createLinearGradient(this.xEnd, 0, this.xEnd - this.hitZoneWidth, 0);
         gradR.addColorStop(0, 'rgba(255, 0, 127, 0.22)');
         gradR.addColorStop(0.2, 'rgba(255, 0, 127, 0.1)');
         gradR.addColorStop(0.5, 'rgba(255, 0, 127, 0.05)');
         gradR.addColorStop(1, 'rgba(255, 0, 127, 0)');
         this.ctx.fillStyle = gradR;
-        this.ctx.fillRect(this.width - this.hitZoneWidth, 0, this.hitZoneWidth, this.height);
+        this.ctx.fillRect(this.xEnd - this.hitZoneWidth, 0, this.hitZoneWidth, this.height);
+
+        // Fill dynamic margin/gutter background on the far right side
+        if (this.xEnd < this.width) {
+            this.ctx.fillStyle = 'rgba(255, 0, 127, 0.04)';
+            this.ctx.fillRect(this.xEnd, 0, this.width - this.xEnd, this.height);
+        }
 
         // Player 2 Outer Boundaries
         this.ctx.strokeStyle = 'rgba(255, 0, 127, 0.15)';
         this.ctx.setLineDash([6, 6]);
         this.ctx.beginPath();
-        this.ctx.moveTo(this.width - this.zones.good, 0);
-        this.ctx.lineTo(this.width - this.zones.good, this.height);
+        this.ctx.moveTo(this.xEnd - this.zones.good, 0);
+        this.ctx.lineTo(this.xEnd - this.zones.good, this.height);
         this.ctx.stroke();
         this.ctx.setLineDash([]);
 
-        // Player 2 Goal energy barrier (Wall at x=width-5)
+        // Player 2 Goal energy barrier (Wall at x = xEnd)
         this.ctx.strokeStyle = 'rgba(255, 0, 127, 0.8)';
         this.ctx.shadowColor = 'rgba(255, 0, 127, 0.8)';
         this.ctx.shadowBlur = 10;
         this.ctx.lineWidth = 4;
         this.ctx.beginPath();
-        this.ctx.moveTo(this.width - 4, 0);
-        this.ctx.lineTo(this.width - 4, this.height);
+        this.ctx.moveTo(this.xEnd, 0);
+        this.ctx.lineTo(this.xEnd, this.height);
         this.ctx.stroke();
         this.ctx.shadowBlur = 0; // reset glow
     }
